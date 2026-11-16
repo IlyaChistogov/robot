@@ -92,7 +92,37 @@
 
 ---
 
-### 2. `plugins/` — Студенческие плагины и алгоритмы
+### 2. `frontend/` — Веб-пульт оператора на React (Модульная плагинная архитектура)
+
+Веб-пульт построен на **React + Vite**. Каждый датчик, видеопоток или элемент управления вынесен в независимый плагин-виджет (`frontend/src/plugins/`).
+
+* **[`frontend/package.json`](file:///c:/Users/ilyac/robot/frontend/package.json)** — Конфигурация зависимостей веб-пульта (React 18, Lucide-React, Vite).
+* **[`frontend/vite.config.js`](file:///c:/Users/ilyac/robot/frontend/vite.config.js)** — Настройка сборщика и автоматический прокси `/api` и `/video_feed` на бэкенд (порт 5000).
+* **[`frontend/src/core/RobotContext.jsx`](file:///c:/Users/ilyac/robot/frontend/src/core/RobotContext.jsx)**:
+  * Ядро взаимодействия с роботом.
+  * Получает телеметрию через Server-Sent Events (SSE 10 Гц).
+  * Предоставляет хук `useRobot()` с методами:
+    * `telemetry`: данные всех датчиков (АКБ, лидар, IMU, одометрия, сонары);
+    * `drive(linear, angular)`: отправка скоростей;
+    * `triggerEmergencyStop()`, `resetEmergencyStop()`: аварийный останов;
+    * `sendCustomCommand(endpoint, payload)`: отправка команд на любые кастомные датчики студентов;
+    * `activePluginIds`, `togglePlugin(id)`: включение/выключение виджетов в интерфейсе.
+* **[`frontend/src/components/Header.jsx`](file:///c:/Users/ilyac/robot/frontend/src/components/Header.jsx)** — Шапка пульта со статусом связи (Online/Offline), напряжением 12В АКБ, кнопкой экстренного останова «СТОП (SPACE)» и меню включения/отключения плагинов.
+* **[`frontend/src/components/WidgetCard.jsx`](file:///c:/Users/ilyac/robot/frontend/src/components/WidgetCard.jsx)** — Универсальная карточка-контейнер для любого плагина (заголовок, иконка, статус, сворачивание).
+* **[`frontend/src/plugins/index.js`](file:///c:/Users/ilyac/robot/frontend/src/plugins/index.js)** — Главный реестр плагинов. Чтобы подключить новый виджет, достаточно добавить 1 строчку в этот список!
+
+#### Встроенные плагины:
+* **[`frontend/src/plugins/camera/CameraWidget.jsx`](file:///c:/Users/ilyac/robot/frontend/src/plugins/camera/CameraWidget.jsx)** — Виджет курсовой камеры (MJPEG видеопоток, прицел, индикация FPS).
+* **[`frontend/src/plugins/lidar/LidarRadarWidget.jsx`](file:///c:/Users/ilyac/robot/frontend/src/plugins/lidar/LidarRadarWidget.jsx)** — Интерактивный круговой радар RPLIDAR A1M8 на HTML5 Canvas (360° облако точек, кольца дальности 1-6 м, подсветка опасной дистанции).
+* **[`frontend/src/plugins/controls/ControlsWidget.jsx`](file:///c:/Users/ilyac/robot/frontend/src/plugins/controls/ControlsWidget.jsx)** — Управление движением с клавиатуры (клавиши WASD и стрелки) + сенсорные кнопки + переключатель мощности ШИМ.
+* **[`frontend/src/plugins/battery/BatteryWidget.jsx`](file:///c:/Users/ilyac/robot/frontend/src/plugins/battery/BatteryWidget.jsx)** — Панель автомобильного аккумулятора 12В (индикатор напряжения, процент емкости, суммарный ток всей системы, ШИМ и температура драйвера VNH2SP30).
+* **[`frontend/src/plugins/imu/ImuCompassWidget.jsx`](file:///c:/Users/ilyac/robot/frontend/src/plugins/imu/ImuCompassWidget.jsx)** — Индикатор курса (компас), тангажа, крена и текущих координат одометрии.
+* **[`frontend/src/plugins/relays/RelaysWidget.jsx`](file:///c:/Users/ilyac/robot/frontend/src/plugins/relays/RelaysWidget.jsx)** — Управление 8-канальным блоком силовых реле (свет, сирена, питание лидара, сервоприводы).
+* **[`frontend/src/plugins/student_template/StudentSensorTemplate.jsx`](file:///c:/Users/ilyac/robot/frontend/src/plugins/student_template/StudentSensorTemplate.jsx)** — Шаблон для студентов: пример создания собственного виджета датчика и кнопок управления за 20 строк кода.
+
+---
+
+### 3. `plugins/` — Студенческие плагины и алгоритмы
 
 * **[`plugins/avoid_obstacles.py`](file:///c:/Users/ilyac/robot/plugins/avoid_obstacles.py)**
   * **Назначение:** Эталонный пример студенческого автономного плагина.
@@ -100,7 +130,7 @@
 
 ---
 
-### 3. Корневые файлы
+### 4. Корневые файлы
 
 * **[`README.md`](file:///c:/Users/ilyac/robot/README.md)** — Главное описание проекта, цели, задачи платформы и критерии валидации.
 * **[`STRUCTURE.md`](file:///c:/Users/ilyac/robot/STRUCTURE.md)** — Данный файл с полной картой компонентов и их назначением.
