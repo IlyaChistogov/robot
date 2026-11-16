@@ -22,3 +22,7 @@ Thumbs.db
 # Environment files
 .env
 .env.local
+
+# Temp workspace notes
+*.txt
+1/
