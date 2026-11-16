@@ -18,11 +18,28 @@ import numpy as np
 from flask import Flask, jsonify, request, Response
 from schemas import DriveCommand
 from mock_robot import MockRobot
+import config
+
+try:
+    from real_robot import RealRobot
+except ImportError:
+    RealRobot = None
 
 app = Flask(__name__)
 
-# По умолчанию запускаем в режиме мока
-robot = MockRobot()
+# Выбор реализации робота по конфигу
+if config.ROBOT_MODE == "real" and RealRobot is not None:
+    print("==================================================")
+    print("  РОБОТ: Режим REAL (Физическое шасси)")
+    print(f"  Порт моторов: {config.MOTOR_SERIAL_PORT}")
+    print(f"  Порт лидара:   {config.LIDAR_SERIAL_PORT}")
+    print("==================================================")
+    robot = RealRobot()
+else:
+    print("==================================================")
+    print("  РОБОТ: Режим MOCK (Симулятор платформы)")
+    print("==================================================")
+    robot = MockRobot()
 
 
 @app.after_request
@@ -103,31 +120,42 @@ def telemetry_stream():
     )
 
 
-def generate_mock_camera_frame():
-    """Синтетический кадр курсовой камеры под лидаром"""
+def generate_camera_frame():
+    """Генерация видеопотока (реальная камера или синтетическая эмуляция)"""
+    real_cap = None
+    if config.ROBOT_MODE == "real":
+        try:
+            real_cap = cv2.VideoCapture(config.CAMERA_INDEX)
+            real_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            real_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
+        except Exception as e:
+            print(f"[Камера] Ошибка открытия камеры {config.CAMERA_INDEX}: {e}")
+
     while True:
         telemetry = robot.get_full_telemetry()
-        # Создаем изображение 640x360
-        img = np.zeros((360, 640, 3), dtype=np.uint8)
+        img = None
 
-        # Рисуем пол и потолок виртуальной среды
-        cv2.rectangle(img, (0, 0), (640, 180), (35, 30, 30), -1)   # Верх
-        cv2.rectangle(img, (0, 180), (640, 360), (45, 55, 45), -1) # Пол
+        if real_cap and real_cap.isOpened():
+            ret, frame = real_cap.read()
+            if ret:
+                img = frame
 
-        # Линия горизонта с учетом тангажа (pitch) и крена (roll)
-        pitch_offset = int(telemetry.imu.pitch * 300)
-        roll_angle = telemetry.imu.roll * 180 / np.pi
-        horizon_y = 180 + pitch_offset
-        cv2.line(img, (0, horizon_y), (640, horizon_y), (80, 120, 80), 2)
+        # Если реальной камеры нет или мы в режиме мока — генерируем виртуальный вид
+        if img is None:
+            img = np.zeros((360, 640, 3), dtype=np.uint8)
+            cv2.rectangle(img, (0, 0), (640, 180), (35, 30, 30), -1)   # Верх
+            cv2.rectangle(img, (0, 180), (640, 360), (45, 55, 45), -1) # Пол
 
-        # Перекрестие прицела курсовой камеры
-        cv2.line(img, (300, 180), (340, 180), (0, 255, 0), 1)
-        cv2.line(img, (320, 160), (320, 200), (0, 255, 0), 1)
+            pitch_offset = int(telemetry.imu.pitch * 300)
+            horizon_y = 180 + pitch_offset
+            cv2.line(img, (0, horizon_y), (640, horizon_y), (80, 120, 80), 2)
+            cv2.line(img, (300, 180), (340, 180), (0, 255, 0), 1)
+            cv2.line(img, (320, 160), (320, 200), (0, 255, 0), 1)
 
-        # Оверлей данных телеметрии (HUD)
-        hud_color = (0, 255, 200)
-        cv2.putText(img, f"MOCK CAMERA - RPLIDAR A1 / VNH2SP30", (20, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, hud_color, 2)
+        # Оверлей телеметрии (HUD)
+        mode_text = "REAL HARDWARE" if config.ROBOT_MODE == "real" else "MOCK SIMULATOR"
+        cv2.putText(img, f"CAM: {mode_text}", (20, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 200), 2)
         cv2.putText(img, f"BAT: {telemetry.battery.voltage}V ({telemetry.battery.percentage}%)  CURR: {telemetry.battery.current_amps}A",
                     (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
         cv2.putText(img, f"SPEED: {telemetry.pose.linear_velocity} m/s  YAW: {telemetry.pose.yaw} rad",
@@ -139,20 +167,19 @@ def generate_mock_camera_frame():
             cv2.putText(img, "EMERGENCY STOP ACTIVE", (160, 220),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 3)
 
-        # Кодируем в JPEG
         _, buffer = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])
-        frame = buffer.tobytes()
+        frame_bytes = buffer.tobytes()
 
         yield (b"--frame\r\n"
-               b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
-        time.sleep(0.066)  # ~15 FPS
+               b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n")
+        time.sleep(0.066)
 
 
 @app.route("/video_feed")
 def video_feed():
     """MJPEG видеопоток для вывода на веб-пульт"""
     return Response(
-        generate_mock_camera_frame(),
+        generate_camera_frame(),
         mimetype="multipart/x-mixed-replace; boundary=frame"
     )
 
