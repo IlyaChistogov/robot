@@ -24,6 +24,7 @@ from schemas import (
     DriveCommand
 )
 from base_robot import BaseRobot
+from geometry import Pose, integrate_unicycle
 
 
 class MockRobot(BaseRobot):
@@ -158,13 +159,10 @@ class MockRobot(BaseRobot):
         self.left_pwm = int(max(-255, min(255, (v_left / self.max_linear_speed) * 255)))
         self.right_pwm = int(max(-255, min(255, (v_right / self.max_linear_speed) * 255)))
 
-        # Обновление одометрии
-        delta_dist = self.current_linear_vel * dt
-        delta_yaw = self.current_angular_vel * dt
-
-        self.yaw = (self.yaw + delta_yaw + math.pi) % (2 * math.pi) - math.pi
-        self.x += delta_dist * math.cos(self.yaw)
-        self.y += delta_dist * math.sin(self.yaw)
+        # Обновление одометрии (точное дуговое интегрирование unicycle)
+        current_pose = Pose(self.x, self.y, self.yaw)
+        new_pose = integrate_unicycle(current_pose, self.current_linear_vel, self.current_angular_vel, dt)
+        self.x, self.y, self.yaw = new_pose.x, new_pose.y, new_pose.theta
 
         # Наращивание тиков энкодеров
         self.left_ticks += int(v_left * dt * self.encoder_ticks_per_meter)

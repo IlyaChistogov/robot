@@ -25,6 +25,7 @@ from schemas import (
 )
 from base_robot import BaseRobot
 import config
+from rplidar_driver import RPLidarA1Driver
 
 try:
     import serial
@@ -133,12 +134,11 @@ class RealRobot(BaseRobot):
                 time.sleep(0.05)
 
     def _init_lidar(self):
-        """Подключение к Slamtec RPLIDAR A1M8"""
-        # Попытка подключить библиотеку rplidar
+        """Подключение к Slamtec RPLIDAR A1M8 через встроенный парсер протокола"""
         try:
-            from rplidar import RPLidar
-            self.lidar = RPLidar(config.LIDAR_SERIAL_PORT, baudrate=config.LIDAR_BAUDRATE)
-            print(f"[RealRobot] RPLIDAR A1M8 подключен на {config.LIDAR_SERIAL_PORT}")
+            self.lidar = RPLidarA1Driver(port=config.LIDAR_SERIAL_PORT, baudrate=config.LIDAR_BAUDRATE)
+            self.lidar.start()
+            print(f"[RealRobot] RPLIDAR A1M8 успешно подключен на {config.LIDAR_SERIAL_PORT}")
             self.lidar_thread = threading.Thread(target=self._lidar_scan_loop, daemon=True)
             self.lidar_thread.start()
         except Exception as e:
@@ -146,19 +146,14 @@ class RealRobot(BaseRobot):
 
     def _lidar_scan_loop(self):
         """Фоновый сбор 360-градусного скана с RPLIDAR A1M8"""
-        try:
-            for scan in self.lidar.iter_scans(max_buf_meas=500):
-                if not self.running:
-                    break
+        while self.running:
+            try:
+                ranges = self.lidar.get_360_ranges()
                 with self.lidar_lock:
-                    for quality, angle_deg, distance_mm in scan:
-                        idx = int(angle_deg) % 360
-                        dist_m = distance_mm / 1000.0
-                        if 0.15 <= dist_m <= 12.0:
-                            self.lidar_ranges[idx] = round(dist_m, 3)
-                            self.lidar_intensities[idx] = quality
-        except Exception as e:
-            print(f"[RealRobot] Ошибка чтения RPLidar: {e}")
+                    self.lidar_ranges = ranges
+                time.sleep(0.1)
+            except Exception as e:
+                time.sleep(0.5)
 
     def set_drive_command(self, cmd: DriveCommand) -> None:
         """Перевод скоростей (v, w) в ШИМ VNH2SP30 и отправка в Serial"""

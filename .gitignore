@@ -25,4 +25,6 @@ Thumbs.db
 
 # Temp workspace notes
 *.txt
+!requirements.txt
+!requirements-*.txt
 1/
