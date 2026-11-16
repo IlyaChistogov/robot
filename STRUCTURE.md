@@ -130,8 +130,12 @@
 
 ---
 
-### 4. Корневые файлы
+### 4. Документация и запуск
 
+* **[`docs/API.md`](file:///c:/Users/ilyac/robot/docs/API.md)** — Полная спецификация REST API, SSE-потока телеметрии и видеопотока.
+* **[`docs/PLUGINS_GUIDE.md`](file:///c:/Users/ilyac/robot/docs/PLUGINS_GUIDE.md)** — Руководство для студентов по созданию плагинов и сквозной техпроцесс (ТП) добавления новых датчиков.
+* **[`start.bat`](file:///c:/Users/ilyac/robot/start.bat)** — Запуск всей системы (бэкенд + веб-пульт + открытие браузера) в 1 клик для Windows.
+* **[`start.sh`](file:///c:/Users/ilyac/robot/start.sh)** — Скрипт запуска для Linux и Raspberry Pi.
 * **[`README.md`](file:///c:/Users/ilyac/robot/README.md)** — Главное описание проекта, цели, задачи платформы и критерии валидации.
 * **[`STRUCTURE.md`](file:///c:/Users/ilyac/robot/STRUCTURE.md)** — Данный файл с полной картой компонентов и их назначением.
-* **[`.gitignore`](file:///c:/Users/ilyac/robot/.gitignore)** — Список исключений для Git (кэши Python, системные файлы).
+* **[`.gitignore`](file:///c:/Users/ilyac/robot/.gitignore)** — Список исключений для Git.
