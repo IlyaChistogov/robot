@@ -283,8 +283,8 @@ def generate_camera_frame(cam_param: str = "0"):
         telemetry = robot.get_full_telemetry()
 
         if cam_param == "grid":
-            # Режим 2х2 мультивид
-            labels = ["1. FRONT (video0)", "2. RIGHT (video2)", "3. LEFT (video4)", "4. REAR (video6)"]
+            # Режим 2х2 мультивид (FRONT video0, RIGHT video2, LEFT video6, REAR video4)
+            labels = ["1. FRONT (video0)", "2. RIGHT (video2)", "3. LEFT (video6)", "4. REAR (video4)"]
             frames = []
             for i, c_idx in enumerate(cam_indices[:4]):
                 lbl = labels[i] if i < len(labels) else f"CAM {c_idx}"

@@ -43,7 +43,7 @@ LIDAR_BAUDRATE = 115200
 # Камеры (4 USB-камеры кругового обзора)
 # ============================================================
 CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
-CAMERA_INDICES = [0, 2, 4, 6]  # Индексы видеопотоков 4 камер в /dev/video*
+CAMERA_INDICES = [0, 2, 6, 4]  # 0: Передняя (video0), 2: Правая (video2), 6: Левая (video6), 4: Задняя (video4)
 CAMERA_FLIP_180 = os.getenv("CAMERA_FLIP_180", "true").lower() in ("true", "1", "yes") # Переворот изображения на 180°
 
 # Сетевые настройки

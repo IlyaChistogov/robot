@@ -12,8 +12,8 @@ export const CameraWidget = () => {
   const cameras = [
     { id: '0', label: '1. Передняя' },
     { id: '2', label: '2. Правая' },
-    { id: '4', label: '3. Левая' },
-    { id: '6', label: '4. Задняя' },
+    { id: '6', label: '3. Левая' },
+    { id: '4', label: '4. Задняя' },
     { id: 'grid', label: 'Сетка 2×2' }
   ];
 
