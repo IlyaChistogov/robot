@@ -179,9 +179,25 @@ camera_caps = {}
 camera_lock = threading.Lock()
 
 
-def get_camera_cap(cam_idx: int):
+def release_other_cameras(keep_idx: int):
+    """Освобождает неиспользуемые камеры, чтобы не перегружать шину USB 2.0 хаба"""
     with camera_lock:
-        if cam_idx not in camera_caps:
+        to_del = []
+        for idx, cap in list(camera_caps.items()):
+            if idx != keep_idx and cap is not None:
+                try:
+                    cap.release()
+                    print(f"[Камера] Освобождено устройство /dev/video{idx} (освобождение шины USB)")
+                except Exception:
+                    pass
+                to_del.append(idx)
+        for idx in to_del:
+            camera_caps.pop(idx, None)
+
+
+def get_camera_cap(cam_idx: int, width: int = 640, height: int = 480, fps: int = 15):
+    with camera_lock:
+        if cam_idx not in camera_caps or camera_caps[cam_idx] is None:
             try:
                 # В Linux/Raspberry Pi используем V4L2 бэкенд
                 cap = cv2.VideoCapture(cam_idx, cv2.CAP_V4L2)
@@ -193,16 +209,16 @@ def get_camera_cap(cam_idx: int):
                     # чтобы не забивать шину USB 2.0 (480 Мбит/с на все 4 камеры)
                     fourcc = cv2.VideoWriter_fourcc(*'MJPG')
                     cap.set(cv2.CAP_PROP_FOURCC, fourcc)
-                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                    cap.set(cv2.CAP_PROP_FPS, 15)
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                    cap.set(cv2.CAP_PROP_FPS, fps)
                     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
                     # Прогревочный кадр
-                    time.sleep(0.05)
+                    time.sleep(0.08)
                     ret, _ = cap.read()
                     camera_caps[cam_idx] = cap
-                    print(f"[Камера] Устройство /dev/video{cam_idx} успешно открыто (MJPEG, ret={ret})")
+                    print(f"[Камера] Устройство /dev/video{cam_idx} успешно открыто (MJPEG {width}x{height}@{fps}fps, ret={ret})")
                 else:
                     camera_caps[cam_idx] = None
                     print(f"[Камера] Не удалось открыть устройство /dev/video{cam_idx}")
@@ -213,19 +229,19 @@ def get_camera_cap(cam_idx: int):
 
 
 def read_cam_frame(cam_idx: int, label: str = ""):
-    """Считывает кадр с камеры или отдает заглушку 320x180"""
-    cap = get_camera_cap(cam_idx) if mode == "real" else None
+    """Считывает кадр с камеры для сетки 2х2 в экономичном режиме (320x240 @ 10fps)"""
+    cap = get_camera_cap(cam_idx, width=320, height=240, fps=10) if mode == "real" else None
     frame = None
     if cap and cap.isOpened():
         ret, raw_frame = cap.read()
-        if ret:
+        if ret and raw_frame is not None:
             frame = cv2.resize(raw_frame, (320, 180))
 
     if frame is None:
         frame = np.zeros((180, 320, 3), dtype=np.uint8)
         cv2.rectangle(frame, (0, 0), (320, 90), (35, 30, 30), -1)
         cv2.rectangle(frame, (0, 90), (320, 180), (45, 55, 45), -1)
-        cv2.putText(frame, f"CAM {cam_idx}: MOCK / NO SIGNAL", (20, 100),
+        cv2.putText(frame, f"CAM {cam_idx}: NO SIGNAL", (20, 100),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 200, 255), 1)
 
     if label:
@@ -268,11 +284,14 @@ def generate_camera_frame(cam_param: str = "0"):
             except ValueError:
                 target_idx = config.CAMERA_INDEX
 
-            cap = get_camera_cap(target_idx) if mode == "real" else None
+            # Освобождаем остальные камеры, чтобы текущая получила 100% полосы USB хаба
+            release_other_cameras(target_idx)
+
+            cap = get_camera_cap(target_idx, width=640, height=480, fps=15) if mode == "real" else None
             img = None
             if cap and cap.isOpened():
                 ret, frame = cap.read()
-                if ret:
+                if ret and frame is not None:
                     img = frame
 
             if img is None:
