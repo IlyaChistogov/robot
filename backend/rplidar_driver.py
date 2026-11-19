@@ -87,6 +87,7 @@ class RPLidarA1Driver:
         self._rx = bytearray()
         self._current_points: List[Tuple[float, float]] = []
         self._latest_points: List[Tuple[float, float]] = []
+        self._ranges_360: List[float] = [12.0] * 360
         self._running = False
         self._reader: Optional[threading.Thread] = None
 
@@ -171,8 +172,9 @@ class RPLidarA1Driver:
 
             with self._lock:
                 self._rx += chunk
-                if len(self._rx) > 20000:
-                    del self._rx[:len(self._rx) - 20000]
+                # Ограничиваем буфер, чтобы данные не запаздывали
+                if len(self._rx) > 4096:
+                    del self._rx[:len(self._rx) - 4096]
 
                 while len(self._rx) >= 5:
                     parsed = parse_measurement(bytes(self._rx[:5]))
@@ -190,22 +192,16 @@ class RPLidarA1Driver:
 
                     if quality >= self.min_quality and 0.1 <= dist <= self.max_range:
                         self._current_points.append((angle, dist))
+                        deg = int(round(angle)) % 360
+                        self._ranges_360[deg] = round(dist, 3)
 
     def get_360_ranges(self) -> List[float]:
         """
-        Возвращает 360 лучей (индекс = градус от 0 до 359).
-        Если в градусе не было измерений, используется 999.0 (нет препятствия).
+        Возвращает актуальный 360-градусный массив дальностей в метрах.
+        Каждый градус обновляется непрерывно по мере поступления лучей от лидара.
         """
-        ranges = [999.0] * 360
         with self._lock:
-            points = list(self._latest_points)
-
-        for angle, dist in points:
-            deg = int(round(angle)) % 360
-            if dist < ranges[deg]:
-                ranges[deg] = round(dist, 3)
-
-        return ranges
+            return list(self._ranges_360)
 
     def close(self):
         self.stop()
