@@ -253,6 +253,8 @@ def read_cam_frame(cam_idx: int, label: str = ""):
     if cap and cap.isOpened():
         ret, raw_frame = cap.read()
         if ret and raw_frame is not None:
+            if getattr(config, "CAMERA_FLIP_180", False):
+                raw_frame = cv2.rotate(raw_frame, cv2.ROTATE_180)
             frame = cv2.resize(raw_frame, (320, 180))
 
     if frame is None:
@@ -310,6 +312,8 @@ def generate_camera_frame(cam_param: str = "0"):
             if cap and cap.isOpened():
                 ret, frame = cap.read()
                 if ret and frame is not None:
+                    if getattr(config, "CAMERA_FLIP_180", False):
+                        frame = cv2.rotate(frame, cv2.ROTATE_180)
                     img = frame
 
             if img is None:

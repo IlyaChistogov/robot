@@ -40,10 +40,11 @@ LIDAR_SERIAL_PORT = os.getenv("LIDAR_SERIAL_PORT", "/dev/ttyUSB0")
 LIDAR_BAUDRATE = 115200
 
 # ============================================================
-# Камеры (4 USB-камеры кругового обзора через хаб)
+# Камеры (4 USB-камеры кругового обзора)
 # ============================================================
 CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
 CAMERA_INDICES = [0, 2, 4, 6]  # Индексы видеопотоков 4 камер в /dev/video*
+CAMERA_FLIP_180 = os.getenv("CAMERA_FLIP_180", "true").lower() in ("true", "1", "yes") # Переворот изображения на 180°
 
 # Сетевые настройки
 SERVER_HOST = "0.0.0.0"

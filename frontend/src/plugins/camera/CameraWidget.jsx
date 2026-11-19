@@ -7,6 +7,7 @@ export const CameraWidget = () => {
   const [selectedCam, setSelectedCam] = useState('0'); // '0', '2', '4', '6' или 'grid'
   const [streamKey, setStreamKey] = useState(Date.now());
   const [streamError, setStreamError] = useState(false);
+  const [rotate180, setRotate180] = useState(false);
 
   const cameras = [
     { id: '0', label: '1. Передняя' },
@@ -54,9 +55,26 @@ export const CameraWidget = () => {
         ))}
 
         <button
-          onClick={() => { setStreamError(false); setStreamKey(Date.now()); }}
+          onClick={() => setRotate180((prev) => !prev)}
           style={{
             marginLeft: 'auto',
+            padding: '4px 8px',
+            borderRadius: '6px',
+            fontSize: '11px',
+            border: '1px solid var(--border-color)',
+            backgroundColor: rotate180 ? 'var(--accent-cyan)' : 'var(--bg-secondary)',
+            color: rotate180 ? '#000' : 'var(--text-secondary)',
+            cursor: 'pointer',
+            fontWeight: rotate180 ? 700 : 400
+          }}
+          title="Поворот на 180°"
+        >
+          🔄 180°
+        </button>
+
+        <button
+          onClick={() => { setStreamError(false); setStreamKey(Date.now()); }}
+          style={{
             padding: '4px 8px',
             borderRadius: '6px',
             fontSize: '11px',
@@ -90,7 +108,14 @@ export const CameraWidget = () => {
             src={streamUrl}
             alt="Видеопоток"
             onError={() => setStreamError(true)}
-            style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              display: 'block',
+              transform: rotate180 ? 'rotate(180deg)' : 'none',
+              transition: 'transform 0.2s ease-in-out'
+            }}
           />
         ) : (
           <div
