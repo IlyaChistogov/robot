@@ -51,21 +51,28 @@ class RealRobot(BaseRobot):
         self.max_linear_speed = 1.0 # м/с
         self.ticks_per_meter = 1000
 
-        # Одометрия
+        # Одометрия и скорость
         self.x = 0.0
         self.y = 0.0
         self.yaw = 0.0
         self.linear_vel = 0.0
         self.angular_vel = 0.0
+        self.target_linear_vel = 0.0
+        self.target_angular_vel = 0.0
+
+        # Сторожевой таймер (Watchdog) для команд движения
+        self.last_cmd_time = time.time()
+        self.watchdog_timeout = 0.8
 
         # Показатели моторов
         self.left_pwm_val = 0.0
         self.right_pwm_val = 0.0
         self.left_ticks = 0
         self.right_ticks = 0
+        self.driver_temp = 25.0
 
         # Батарея
-        self.voltage = 12.5
+        self.voltage = 12.6
         self.current_amps = 1.2
 
         # Лидар
@@ -172,7 +179,8 @@ class RealRobot(BaseRobot):
             pwm_dev.value = abs_speed
 
     def set_drive_command(self, cmd: DriveCommand) -> None:
-        """Перевод (linear, angular) в прямое управление пинами VNH2SP30 на Pi 5"""
+        """Перевод (linear, angular) в прямое управление или мок-симуляцию"""
+        self.last_cmd_time = time.time()
         if cmd.emergency_stop is not None:
             self.is_emergency_stop = cmd.emergency_stop
 
@@ -180,22 +188,22 @@ class RealRobot(BaseRobot):
             self.trigger_emergency_stop()
             return
 
-        # Дифференциальная кинематика: расчет линейных скоростей левого и правого колес
-        v = max(-self.max_linear_speed, min(self.max_linear_speed, cmd.linear))
-        w = max(-2.0, min(2.0, cmd.angular))
+        self.target_linear_vel = max(-self.max_linear_speed, min(self.max_linear_speed, cmd.linear))
+        self.target_angular_vel = max(-2.0, min(2.0, cmd.angular))
 
-        v_l = v - (w * self.track_width_m / 2.0)
-        v_r = v + (w * self.track_width_m / 2.0)
-
-        self.left_pwm_val = v_l / self.max_linear_speed
-        self.right_pwm_val = v_r / self.max_linear_speed
-
+        # Если моторы подключены к физическому GPIO Raspberry Pi 5
         if getattr(self, "gpio_active", False):
+            v_l = self.target_linear_vel - (self.target_angular_vel * self.track_width_m / 2.0)
+            v_r = self.target_linear_vel + (self.target_angular_vel * self.track_width_m / 2.0)
+            self.left_pwm_val = v_l / self.max_linear_speed
+            self.right_pwm_val = v_r / self.max_linear_speed
             self._set_single_motor(self.m_left_pwm, self.m_left_ina, self.m_left_inb, self.left_pwm_val)
             self._set_single_motor(self.m_right_pwm, self.m_right_ina, self.m_right_inb, self.right_pwm_val)
 
     def trigger_emergency_stop(self) -> None:
         self.is_emergency_stop = True
+        self.target_linear_vel = 0.0
+        self.target_angular_vel = 0.0
         self.left_pwm_val = 0.0
         self.right_pwm_val = 0.0
         self.linear_vel = 0.0
@@ -212,39 +220,94 @@ class RealRobot(BaseRobot):
         self.is_emergency_stop = False
 
     def _odometry_loop(self):
-        """Интегрирование одометрии по тикам энкодеров или скоростям шасси"""
+        """Интегрирование одометрии (поддерживает физический и мок-режимы)"""
         last_time = time.time()
         last_l_ticks = self.left_ticks
         last_r_ticks = self.right_ticks
 
         while self.running:
-            time.sleep(0.05)
+            time.sleep(0.04)
             now = time.time()
             dt = now - last_time
             if dt <= 0:
                 continue
-
-            dl_ticks = self.left_ticks - last_l_ticks
-            dr_ticks = self.right_ticks - last_r_ticks
-            last_l_ticks = self.left_ticks
-            last_r_ticks = self.right_ticks
             last_time = now
 
-            if dl_ticks != 0 or dr_ticks != 0:
-                dl = dl_ticks / self.ticks_per_meter
-                dr = dr_ticks / self.ticks_per_meter
-                dist = (dl + dr) / 2.0
-                d_yaw = (dr - dl) / self.track_width_m
-                self.linear_vel = dist / dt
-                self.angular_vel = d_yaw / dt
-            else:
-                # Если энкодеров нет — одометрия по заданной скорости
-                self.linear_vel = self.left_pwm_val * self.max_linear_speed
-                self.angular_vel = -(self.right_pwm_val - self.left_pwm_val) * (self.max_linear_speed / self.track_width_m)
+            if not getattr(self, "gpio_active", False):
+                # ==========================================================
+                # МОК-РЕЖИМ: плавная физика, разгон, инерция и одометрия
+                # ==========================================================
+                # Watchdog: если 0.8 сек нет команд от оператора - плавно тормозим
+                if (now - self.last_cmd_time) > self.watchdog_timeout:
+                    self.target_linear_vel = 0.0
+                    self.target_angular_vel = 0.0
 
-            current_pose = Pose(self.x, self.y, self.yaw)
-            new_pose = integrate_unicycle(current_pose, self.linear_vel, self.angular_vel, dt)
-            self.x, self.y, self.yaw = new_pose.x, new_pose.y, new_pose.theta
+                if self.is_emergency_stop:
+                    self.linear_vel = 0.0
+                    self.angular_vel = 0.0
+                    self.left_pwm_val = 0.0
+                    self.right_pwm_val = 0.0
+                else:
+                    # Плавный разгон и инерция мощных червячных редукторов
+                    acc_lin = 2.0 * dt
+                    acc_ang = 4.0 * dt
+
+                    d_lin = self.target_linear_vel - self.linear_vel
+                    if abs(d_lin) < acc_lin:
+                        self.linear_vel = self.target_linear_vel
+                    else:
+                        self.linear_vel += math.copysign(acc_lin, d_lin)
+
+                    d_ang = self.target_angular_vel - self.angular_vel
+                    if abs(d_ang) < acc_ang:
+                        self.angular_vel = self.target_angular_vel
+                    else:
+                        self.angular_vel += math.copysign(acc_ang, d_ang)
+
+                    # Дифференциальная кинематика
+                    v_l = self.linear_vel - (self.angular_vel * self.track_width_m / 2.0)
+                    v_r = self.linear_vel + (self.angular_vel * self.track_width_m / 2.0)
+
+                    self.left_pwm_val = max(-1.0, min(1.0, v_l / self.max_linear_speed))
+                    self.right_pwm_val = max(-1.0, min(1.0, v_r / self.max_linear_speed))
+
+                    # Наращивание тиков энкодеров
+                    self.left_ticks += int(v_l * dt * self.ticks_per_meter)
+                    self.right_ticks += int(v_r * dt * self.ticks_per_meter)
+
+                # Дуговое интегрирование unicycle модели
+                current_pose = Pose(self.x, self.y, self.yaw)
+                new_pose = integrate_unicycle(current_pose, self.linear_vel, self.angular_vel, dt)
+                self.x, self.y, self.yaw = new_pose.x, new_pose.y, new_pose.theta
+
+                # Моделирование нагрева чипов драйвера VNH2SP30
+                effort = (abs(self.left_pwm_val) + abs(self.right_pwm_val)) / 2.0
+                self.driver_temp += (effort * 3.0 - (self.driver_temp - 25.0) * 0.05) * dt
+
+                # Моделирование просадки АКБ под нагрузкой моторов
+                self.current_amps = round(1.2 + effort * 3.6, 2)
+                self.voltage = round(12.6 - (self.current_amps * 0.05), 2)
+            else:
+                # Физические энкодеры на GPIO
+                dl_ticks = self.left_ticks - last_l_ticks
+                dr_ticks = self.right_ticks - last_r_ticks
+                last_l_ticks = self.left_ticks
+                last_r_ticks = self.right_ticks
+
+                if dl_ticks != 0 or dr_ticks != 0:
+                    dl = dl_ticks / self.ticks_per_meter
+                    dr = dr_ticks / self.ticks_per_meter
+                    dist = (dl + dr) / 2.0
+                    d_yaw = (dr - dl) / self.track_width_m
+                    self.linear_vel = dist / dt
+                    self.angular_vel = d_yaw / dt
+                else:
+                    self.linear_vel = self.left_pwm_val * self.max_linear_speed
+                    self.angular_vel = -(self.right_pwm_val - self.left_pwm_val) * (self.max_linear_speed / self.track_width_m)
+
+                current_pose = Pose(self.x, self.y, self.yaw)
+                new_pose = integrate_unicycle(current_pose, self.linear_vel, self.angular_vel, dt)
+                self.x, self.y, self.yaw = new_pose.x, new_pose.y, new_pose.theta
 
     def get_full_telemetry(self) -> FullTelemetryMessage:
         with self.lidar_lock:
@@ -274,7 +337,7 @@ class RealRobot(BaseRobot):
                 right_current_amps=round(abs(self.right_pwm_val) * 1.5, 2),
                 left_encoder_ticks=self.left_ticks,
                 right_encoder_ticks=self.right_ticks,
-                driver_temperature_c=28.0
+                driver_temperature_c=round(self.driver_temp, 1)
             ),
             imu=ImuTelemetry(
                 roll=0.0,
