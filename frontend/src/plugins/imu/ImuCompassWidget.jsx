@@ -33,10 +33,10 @@ export const ImuCompassWidget = () => {
           <span style={{ position: 'absolute', bottom: '4px', fontSize: '10px', color: 'var(--text-secondary)' }}>S</span>
           <span style={{ position: 'absolute', left: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>W</span>
 
-          {/* Стрелка компаса */}
+          {/* Стрелка компаса: отрицательный угол, так как в CSS поворот по часовой стрелке */}
           <div
             style={{
-              transform: `rotate(${yawDeg}deg)`,
+              transform: `rotate(${-yawDeg}deg)`,
               transition: 'transform 0.1s linear',
               display: 'flex',
               flexDirection: 'column',
