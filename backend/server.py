@@ -153,55 +153,113 @@ def telemetry_stream():
 
 
 # -------------------------------------------------------------
-# Видеопоток (MJPEG)
+# Видеопоток (MJPEG) с поддержкой 4 камер кругового обзора
 # -------------------------------------------------------------
-def generate_camera_frame():
-    real_cap = None
-    if mode == "real":
-        try:
-            real_cap = cv2.VideoCapture(config.CAMERA_INDEX)
-            real_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            real_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
-        except Exception as e:
-            print(f"[Камера] Ошибка открытия камеры {config.CAMERA_INDEX}: {e}")
+camera_caps = {}
+camera_lock = threading.Lock()
+
+
+def get_camera_cap(cam_idx: int):
+    with camera_lock:
+        if cam_idx not in camera_caps:
+            try:
+                cap = cv2.VideoCapture(cam_idx)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
+                if cap.isOpened():
+                    camera_caps[cam_idx] = cap
+                    print(f"[Камера] Устройство /dev/video{cam_idx} успешно открыто!")
+                else:
+                    camera_caps[cam_idx] = None
+            except Exception as e:
+                print(f"[Камера] Ошибка открытия /dev/video{cam_idx}: {e}")
+                camera_caps[cam_idx] = None
+        return camera_caps.get(cam_idx)
+
+
+def read_cam_frame(cam_idx: int, label: str = ""):
+    """Считывает кадр с камеры или отдает заглушку 320x180"""
+    cap = get_camera_cap(cam_idx) if mode == "real" else None
+    frame = None
+    if cap and cap.isOpened():
+        ret, raw_frame = cap.read()
+        if ret:
+            frame = cv2.resize(raw_frame, (320, 180))
+
+    if frame is None:
+        frame = np.zeros((180, 320, 3), dtype=np.uint8)
+        cv2.rectangle(frame, (0, 0), (320, 90), (35, 30, 30), -1)
+        cv2.rectangle(frame, (0, 90), (320, 180), (45, 55, 45), -1)
+        cv2.putText(frame, f"CAM {cam_idx}: MOCK / NO SIGNAL", (20, 100),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 200, 255), 1)
+
+    if label:
+        cv2.rectangle(frame, (0, 0), (320, 24), (0, 0, 0), -1)
+        cv2.putText(frame, label, (8, 16),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 200), 1)
+    return frame
+
+
+def generate_camera_frame(cam_param: str = "0"):
+    cam_indices = getattr(config, "CAMERA_INDICES", [0, 2, 4, 6])
 
     while True:
         telemetry = robot.get_full_telemetry()
-        img = None
 
-        if real_cap and real_cap.isOpened():
-            ret, frame = real_cap.read()
-            if ret:
-                img = frame
+        if cam_param == "grid":
+            # Режим 2х2 мультивид
+            labels = ["1. ПЕРЕДНЯЯ (video0)", "2. ПРАВАЯ (video2)", "3. ЛЕВАЯ (video4)", "4. ЗАДНЯЯ (video6)"]
+            frames = []
+            for i, c_idx in enumerate(cam_indices[:4]):
+                lbl = labels[i] if i < len(labels) else f"CAM {c_idx}"
+                frames.append(read_cam_frame(c_idx, lbl))
 
-        if img is None:
-            # Синтетический вид от первого лица
-            img = np.zeros((360, 640, 3), dtype=np.uint8)
-            cv2.rectangle(img, (0, 0), (640, 180), (35, 30, 30), -1)   # Небо/потолок
-            cv2.rectangle(img, (0, 180), (640, 360), (45, 55, 45), -1) # Пол
+            # Если камер меньше 4, дополняем пустыми
+            while len(frames) < 4:
+                frames.append(read_cam_frame(99, f"CAM {len(frames)+1}"))
 
-            pitch_offset = int(telemetry.imu.pitch * 300)
-            horizon_y = max(50, min(310, 180 + pitch_offset))
-            cv2.line(img, (0, horizon_y), (640, horizon_y), (80, 120, 80), 2)
-            cv2.line(img, (300, 180), (340, 180), (0, 255, 0), 1)
-            cv2.line(img, (320, 160), (320, 200), (0, 255, 0), 1)
+            row1 = np.hstack([frames[0], frames[1]])
+            row2 = np.hstack([frames[2], frames[3]])
+            img = np.vstack([row1, row2])
+        else:
+            # Одиночная камера
+            try:
+                target_idx = int(cam_param)
+            except ValueError:
+                target_idx = config.CAMERA_INDEX
 
-        # Оверлей телеметрии (HUD)
-        mode_text = "REAL HARDWARE" if mode == "real" else "MOCK SIMULATOR"
-        cv2.putText(img, f"CAM: {mode_text}", (20, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 200), 2)
-        cv2.putText(img, f"BAT: {telemetry.battery.voltage}V ({telemetry.battery.percentage}%)  CURR: {telemetry.battery.current_amps}A",
-                    (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-        cv2.putText(img, f"SPEED: {telemetry.pose.linear_velocity} m/s  YAW: {telemetry.pose.yaw} rad",
-                    (20, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        cv2.putText(img, f"FRONT DIST: {telemetry.lidar.ranges[0]:.2f} m",
-                    (20, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
+            cap = get_camera_cap(target_idx) if mode == "real" else None
+            img = None
+            if cap and cap.isOpened():
+                ret, frame = cap.read()
+                if ret:
+                    img = frame
+
+            if img is None:
+                img = np.zeros((360, 640, 3), dtype=np.uint8)
+                cv2.rectangle(img, (0, 0), (640, 180), (35, 30, 30), -1)
+                cv2.rectangle(img, (0, 180), (640, 360), (45, 55, 45), -1)
+
+                pitch_offset = int(telemetry.imu.pitch * 300)
+                horizon_y = max(50, min(310, 180 + pitch_offset))
+                cv2.line(img, (0, horizon_y), (640, horizon_y), (80, 120, 80), 2)
+                cv2.line(img, (300, 180), (340, 180), (0, 255, 0), 1)
+                cv2.line(img, (320, 160), (320, 200), (0, 255, 0), 1)
+
+            # Оверлей телеметрии (HUD)
+            mode_text = f"CAM {target_idx}: REAL" if mode == "real" else f"CAM {target_idx}: MOCK"
+            cv2.putText(img, mode_text, (20, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 200), 2)
+            cv2.putText(img, f"BAT: {telemetry.battery.voltage}V ({telemetry.battery.percentage}%)  CURR: {telemetry.battery.current_amps}A",
+                        (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+            cv2.putText(img, f"FRONT DIST: {telemetry.lidar.ranges[0]:.2f} m",
+                        (20, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
 
         if telemetry.status.emergency_stop:
             cv2.putText(img, "EMERGENCY STOP ACTIVE", (160, 220),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 3)
 
-        _, buffer = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        _, buffer = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 70])
         frame_bytes = buffer.tobytes()
 
         yield (b"--frame\r\n"
@@ -212,11 +270,28 @@ def generate_camera_frame():
 @app.route("/video_feed")
 @app.route("/camera")
 def video_feed():
-    """MJPEG видеопоток для вывода на веб-пульт"""
+    """MJPEG видеопоток с поддержкой выбора камеры ?cam=0|2|4|6|grid"""
+    cam_param = request.args.get("cam", str(config.CAMERA_INDEX)).lower()
     return Response(
-        generate_camera_frame(),
+        generate_camera_frame(cam_param),
         mimetype="multipart/x-mixed-replace; boundary=frame"
     )
+
+
+@app.route("/api/cameras", methods=["GET"])
+def get_cameras_list():
+    """Список всех доступных камер кругового обзора"""
+    cam_indices = getattr(config, "CAMERA_INDICES", [0, 2, 4, 6])
+    names = ["1. Передняя", "2. Правая", "3. Левая", "4. Задняя"]
+    cams = []
+    for i, idx in enumerate(cam_indices):
+        name = names[i] if i < len(names) else f"Камера {i+1}"
+        cams.append({
+            "id": idx,
+            "device": f"/dev/video{idx}",
+            "name": name
+        })
+    return jsonify({"cameras": cams, "grid_supported": True})
 
 
 # -------------------------------------------------------------
