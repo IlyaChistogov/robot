@@ -139,6 +139,19 @@ def reset_stop():
     return jsonify({"success": True, "emergency_stop": False})
 
 
+@app.route("/api/relay", methods=["POST", "OPTIONS"])
+def relay_control():
+    """Управление блоком силовых реле"""
+    if request.method == "OPTIONS":
+        return "", 200
+
+    data = request.get_json(force=True, silent=True) or {}
+    relay_id = data.get("relay_id")
+    state = data.get("state")
+    print(f"[Реле] Канал {relay_id}: {'ВКЛ' if state else 'ВЫКЛ'}")
+    return jsonify({"success": True, "relay_id": relay_id, "state": state})
+
+
 @app.route("/api/stream")
 def telemetry_stream():
     """Server-Sent Events (SSE) поток телеметрии (10 Гц)"""
