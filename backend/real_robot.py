@@ -11,7 +11,11 @@ import time
 import math
 import threading
 from typing import List, Optional
-import cv2
+
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 
 from schemas import (
     BatteryTelemetry,

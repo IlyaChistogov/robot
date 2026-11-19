@@ -19,7 +19,10 @@ import json
 import time
 import threading
 import argparse
-import cv2
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 import numpy as np
 from flask import Flask, jsonify, request, Response, send_from_directory
 from schemas import DriveCommand
@@ -201,6 +204,11 @@ def read_cam_frame(cam_idx: int, label: str = ""):
 
 
 def generate_camera_frame(cam_param: str = "0"):
+    if cv2 is None:
+        while True:
+            time.sleep(1.0)
+            yield (b"--frame\r\nContent-Type: text/plain\r\n\r\nOpenCV not installed\r\n")
+
     cam_indices = getattr(config, "CAMERA_INDICES", [0, 2, 4, 6])
 
     while True:
