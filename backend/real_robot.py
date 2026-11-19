@@ -87,6 +87,11 @@ class RealRobot(BaseRobot):
 
     def _init_rpi5_gpio(self):
         """Прямая инициализация пинов VNH2SP30 на Raspberry Pi 5"""
+        if getattr(config, "MOCK_MOTORS", True):
+            print("[RealRobot] Моторы: MOCK-режим (симуляция движения без подключения к GPIO).")
+            self.gpio_active = False
+            return
+
         if not GPIOZERO_AVAILABLE:
             print("[RealRobot] Внимание: gpiozero не установлена (запуск вне Raspberry Pi).")
             print("[RealRobot] Для работы на Raspberry Pi 5: pip install gpiozero")

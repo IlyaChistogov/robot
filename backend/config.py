@@ -8,6 +8,9 @@ import os
 # Режим работы: 'mock' (симулятор на ПК) или 'real' (на физическом роботе с Raspberry Pi 5)
 ROBOT_MODE = os.getenv("ROBOT_MODE", "mock").lower()
 
+# Режим управления моторами: True - симуляция моторов (когда моторы не подключены), False - реальный VNH2SP30
+MOCK_MOTORS = os.getenv("MOCK_MOTORS", "true").lower() in ("true", "1", "yes")
+
 # ============================================================
 # Настройки Raspberry Pi 5: Прямое подключение VNH2SP30 к GPIO
 # (BCM нумерация 40-пинового разъема Raspberry Pi 5)

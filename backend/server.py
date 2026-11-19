@@ -61,9 +61,13 @@ app = Flask(__name__)
 # Инициализация робота
 if mode == "real" and RealRobot is not None:
     print("==================================================")
-    print("  РОБОТ: Режим REAL (Физическое шасси)")
-    print(f"  Порт моторов: {config.MOTOR_SERIAL_PORT}")
+    print("  РОБОТ: Режим REAL (Сенсоры: Лидар A1M8 + 4 Камеры)")
+    if getattr(config, "MOCK_MOTORS", True):
+        print("  Моторы: MOCK (симуляция движения)")
+    else:
+        print("  Моторы: REAL (Raspberry Pi 5 GPIO VNH2SP30)")
     print(f"  Порт лидара:   {config.LIDAR_SERIAL_PORT}")
+    print(f"  Камеры:        /dev/video{getattr(config, 'CAMERA_INDICES', [0, 2, 4, 6])}")
     print("==================================================")
     robot = RealRobot()
 else:
