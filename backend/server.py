@@ -176,6 +176,7 @@ def telemetry_stream():
 # Видеопоток (MJPEG) с поддержкой 4 камер кругового обзора
 # -------------------------------------------------------------
 camera_caps = {}
+camera_fail_time = {}
 camera_lock = threading.Lock()
 
 
@@ -197,35 +198,52 @@ def release_other_cameras(keep_idx: int):
 
 def get_camera_cap(cam_idx: int, width: int = 640, height: int = 480, fps: int = 15):
     with camera_lock:
-        if cam_idx not in camera_caps or camera_caps[cam_idx] is None:
-            try:
-                # В Linux/Raspberry Pi используем V4L2 бэкенд
-                cap = cv2.VideoCapture(cam_idx, cv2.CAP_V4L2)
-                if not cap or not cap.isOpened():
-                    cap = cv2.VideoCapture(cam_idx)
+        now = time.time()
+        if camera_caps.get(cam_idx) is not None:
+            return camera_caps[cam_idx]
 
-                if cap and cap.isOpened():
-                    # Критично для хаба: запрашиваем аппаратный MJPEG с камеры,
-                    # чтобы не забивать шину USB 2.0 (480 Мбит/с на все 4 камеры)
-                    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-                    cap.set(cv2.CAP_PROP_FOURCC, fourcc)
-                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-                    cap.set(cv2.CAP_PROP_FPS, fps)
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        # Не долбим V4L2 драйвер в цикле при ошибке шины (пауза 3 сек)
+        if cam_idx in camera_fail_time and (now - camera_fail_time[cam_idx]) < 3.0:
+            return None
 
-                    # Прогревочный кадр
-                    time.sleep(0.08)
-                    ret, _ = cap.read()
+        try:
+            # В Linux/Raspberry Pi используем V4L2 бэкенд
+            cap = cv2.VideoCapture(cam_idx, cv2.CAP_V4L2)
+            if not cap or not cap.isOpened():
+                cap = cv2.VideoCapture(cam_idx)
+
+            if cap and cap.isOpened():
+                # Критично для хаба: запрашиваем аппаратный MJPEG с камеры
+                fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+                cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                cap.set(cv2.CAP_PROP_FPS, fps)
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+                time.sleep(0.06)
+                ret, _ = cap.read()
+                if ret:
                     camera_caps[cam_idx] = cap
-                    print(f"[Камера] Устройство /dev/video{cam_idx} успешно открыто (MJPEG {width}x{height}@{fps}fps, ret={ret})")
+                    camera_fail_time.pop(cam_idx, None)
+                    print(f"[Камера] Устройство /dev/video{cam_idx} успешно открыто (MJPEG {width}x{height}@{fps}fps)")
+                    return cap
                 else:
+                    cap.release()
                     camera_caps[cam_idx] = None
-                    print(f"[Камера] Не удалось открыть устройство /dev/video{cam_idx}")
-            except Exception as e:
-                print(f"[Камера] Ошибка открытия /dev/video{cam_idx}: {e}")
+                    camera_fail_time[cam_idx] = now
+                    print(f"[Камера] /dev/video{cam_idx} открыто, но нет кадров (шина USB занята другими камерами)")
+                    return None
+            else:
                 camera_caps[cam_idx] = None
-        return camera_caps.get(cam_idx)
+                camera_fail_time[cam_idx] = now
+                print(f"[Камера] Не удалось открыть устройство /dev/video{cam_idx}")
+                return None
+        except Exception as e:
+            camera_caps[cam_idx] = None
+            camera_fail_time[cam_idx] = now
+            print(f"[Камера] Ошибка открытия /dev/video{cam_idx}: {e}")
+            return None
 
 
 def read_cam_frame(cam_idx: int, label: str = ""):
@@ -264,7 +282,7 @@ def generate_camera_frame(cam_param: str = "0"):
 
         if cam_param == "grid":
             # Режим 2х2 мультивид
-            labels = ["1. ПЕРЕДНЯЯ (video0)", "2. ПРАВАЯ (video2)", "3. ЛЕВАЯ (video4)", "4. ЗАДНЯЯ (video6)"]
+            labels = ["1. FRONT (video0)", "2. RIGHT (video2)", "3. LEFT (video4)", "4. REAR (video6)"]
             frames = []
             for i, c_idx in enumerate(cam_indices[:4]):
                 lbl = labels[i] if i < len(labels) else f"CAM {c_idx}"
