@@ -170,14 +170,29 @@ def get_camera_cap(cam_idx: int):
     with camera_lock:
         if cam_idx not in camera_caps:
             try:
-                cap = cv2.VideoCapture(cam_idx)
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
-                if cap.isOpened():
+                # В Linux/Raspberry Pi используем V4L2 бэкенд
+                cap = cv2.VideoCapture(cam_idx, cv2.CAP_V4L2)
+                if not cap or not cap.isOpened():
+                    cap = cv2.VideoCapture(cam_idx)
+
+                if cap and cap.isOpened():
+                    # Критично для хаба: запрашиваем аппаратный MJPEG с камеры,
+                    # чтобы не забивать шину USB 2.0 (480 Мбит/с на все 4 камеры)
+                    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+                    cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                    cap.set(cv2.CAP_PROP_FPS, 15)
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+                    # Прогревочный кадр
+                    time.sleep(0.05)
+                    ret, _ = cap.read()
                     camera_caps[cam_idx] = cap
-                    print(f"[Камера] Устройство /dev/video{cam_idx} успешно открыто!")
+                    print(f"[Камера] Устройство /dev/video{cam_idx} успешно открыто (MJPEG, ret={ret})")
                 else:
                     camera_caps[cam_idx] = None
+                    print(f"[Камера] Не удалось открыть устройство /dev/video{cam_idx}")
             except Exception as e:
                 print(f"[Камера] Ошибка открытия /dev/video{cam_idx}: {e}")
                 camera_caps[cam_idx] = None

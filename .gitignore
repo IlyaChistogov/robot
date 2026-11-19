@@ -9,6 +9,8 @@ venv/
 
 # Build outputs
 dist/
+!frontend/dist/
+!frontend/dist/**
 build/
 *.egg-info/
 
