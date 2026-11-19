@@ -84,6 +84,7 @@ class RobotStatus:
     emergency_stop: bool = False
     motors_enabled: bool = True
     connection_alive: bool = True
+    connected: bool = True
 
 
 @dataclass

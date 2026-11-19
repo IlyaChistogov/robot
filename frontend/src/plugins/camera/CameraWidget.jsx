@@ -85,7 +85,7 @@ export const CameraWidget = () => {
           justifyContent: 'center'
         }}
       >
-        {isConnected && !streamError ? (
+        {!streamError ? (
           <img
             src={streamUrl}
             alt="Видеопоток"
@@ -105,8 +105,23 @@ export const CameraWidget = () => {
             }}
           >
             <AlertCircle size={32} color="var(--accent-yellow)" />
-            <span>{isConnected ? 'Ожидание видеопотока...' : 'Сервер робота не подключен'}</span>
+            <span>Ожидание видеопотока с камеры...</span>
             <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}>Эндпоинт: {streamUrl}</span>
+            <button
+              onClick={() => { setStreamError(false); setStreamKey(Date.now()); }}
+              style={{
+                marginTop: '8px',
+                padding: '4px 12px',
+                borderRadius: '6px',
+                border: '1px solid var(--accent-cyan)',
+                backgroundColor: 'transparent',
+                color: 'var(--accent-cyan)',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              Повторить попытку
+            </button>
           </div>
         )}
 

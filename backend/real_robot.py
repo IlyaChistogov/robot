@@ -256,6 +256,7 @@ class RealRobot(BaseRobot):
         return FullTelemetryMessage(
             status=RobotStatus(
                 connected=True,
+                connection_alive=True,
                 emergency_stop=self.is_emergency_stop,
                 motors_enabled=not self.is_emergency_stop,
                 mode="real_rpi5"
